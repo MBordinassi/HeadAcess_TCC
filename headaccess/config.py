@@ -39,8 +39,8 @@ class MovementConfig:
 class BlinkConfig:
     """Blink detection settings."""
 
-    ear_close_threshold: float = 0.24
-    ear_open_threshold: float = 0.28
+    ear_close_threshold: float = 0.26
+    ear_open_threshold: float = 0.30
     min_closed_frames_for_hold: int = 2
     min_open_frames_for_release: int = 3
 
@@ -52,6 +52,7 @@ class AppConfig:
     debug_mode: bool = True
     log_level: str = "INFO"
     target_fps: int = 30
+    face_lost_grace_seconds: float = 0.35
 
 
 CAMERA = CameraConfig()

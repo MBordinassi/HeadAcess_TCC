@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -61,6 +62,7 @@ class FaceTracker:
         self._use_tasks_api = not hasattr(mp, "solutions")
         self._face_mesh = None
         self._task_landmarker = None
+        self._video_timestamp_ms = 0
 
         if self._use_tasks_api:
             self._init_tasks_api(config)
@@ -87,7 +89,7 @@ class FaceTracker:
         model_path = self._ensure_task_model()
         options = vision.FaceLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=str(model_path)),
-            running_mode=vision.RunningMode.IMAGE,
+            running_mode=vision.RunningMode.VIDEO,
             num_faces=config.max_num_faces,
             min_face_detection_confidence=config.min_detection_confidence,
             min_face_presence_confidence=config.min_detection_confidence,
@@ -183,7 +185,12 @@ class FaceTracker:
 
         assert self._task_landmarker is not None
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-        result = self._task_landmarker.detect(mp_image)
+        current_ms = time.monotonic_ns() // 1_000_000
+        self._video_timestamp_ms = max(self._video_timestamp_ms + 1, int(current_ms))
+        result = self._task_landmarker.detect_for_video(
+            mp_image,
+            self._video_timestamp_ms,
+        )
         if not result.face_landmarks:
             return None
         return result.face_landmarks[0]

@@ -21,6 +21,7 @@ class DebugOverlay:
         calibrated: bool,
         neutral_point: Optional[Tuple[float, float]],
         landmarks: Optional[list[Tuple[int, int]]] = None,
+        blink_status: Optional[str] = None,
     ) -> np.ndarray:
         """Render landmarks, vectors and status text."""
         output = frame.copy()
@@ -85,6 +86,17 @@ class DebugOverlay:
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.65,
                 (255, 255, 255),
+                2,
+            )
+
+        if blink_status:
+            cv2.putText(
+                output,
+                blink_status,
+                (10, 100),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (200, 255, 200),
                 2,
             )
 
