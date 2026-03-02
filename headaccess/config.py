@@ -39,9 +39,10 @@ class MovementConfig:
 class BlinkConfig:
     """Blink detection settings."""
 
-    ear_threshold: float = 0.20
-    min_consecutive_frames: int = 2
-    cooldown_frames: int = 8
+    ear_close_threshold: float = 0.24
+    ear_open_threshold: float = 0.28
+    min_closed_frames_for_hold: int = 2
+    min_open_frames_for_release: int = 3
 
 
 @dataclass(frozen=True)

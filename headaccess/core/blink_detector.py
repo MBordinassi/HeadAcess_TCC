@@ -1,28 +1,33 @@
-﻿"""Blink detection for triggering mouse clicks."""
+﻿"""Blink detection for hold/release mouse control."""
 
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 from config import BlinkConfig
 
 
 class BlinkAction(str, Enum):
-    """Supported mouse actions triggered by eye blink."""
+    """Supported mouse button state transitions triggered by eye closure."""
 
-    LEFT_CLICK = "left_click"
-    RIGHT_CLICK = "right_click"
+    LEFT_DOWN = "left_down"
+    LEFT_UP = "left_up"
+    RIGHT_DOWN = "right_down"
+    RIGHT_UP = "right_up"
 
 
 class BlinkDetector:
-    """Detects unilateral blinks via Eye Aspect Ratio (EAR)."""
+    """Detects sustained unilateral eye closure and emits hold/release events."""
 
     def __init__(self, config: BlinkConfig) -> None:
         self._config = config
         self._left_closed_frames = 0
         self._right_closed_frames = 0
-        self._cooldown = 0
+        self._left_open_frames = 0
+        self._right_open_frames = 0
+        self._left_is_held = False
+        self._right_is_held = False
 
     @staticmethod
     def _distance(p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
@@ -44,35 +49,55 @@ class BlinkDetector:
     def update(
         self,
         eye_data: Dict[str, Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]]],
-    ) -> Optional[BlinkAction]:
-        """Process eye landmarks and return click action when a blink is confirmed."""
-        if self._cooldown > 0:
-            self._cooldown -= 1
-            return None
+    ) -> list[BlinkAction]:
+        """Process eye landmarks and return button transitions for this frame."""
+        events: list[BlinkAction] = []
 
         left_ear = self._ear(eye_data["left"])
         right_ear = self._ear(eye_data["right"])
 
-        left_closed = left_ear < self._config.ear_threshold
-        right_closed = right_ear < self._config.ear_threshold
+        # Hysteresis avoids rapid toggling near threshold:
+        # close when EAR is low, release only when EAR is clearly open.
+        left_close = left_ear < self._config.ear_close_threshold
+        right_close = right_ear < self._config.ear_close_threshold
+        left_open = left_ear > self._config.ear_open_threshold
+        right_open = right_ear > self._config.ear_open_threshold
 
-        self._left_closed_frames = self._left_closed_frames + 1 if left_closed else 0
-        self._right_closed_frames = self._right_closed_frames + 1 if right_closed else 0
+        self._left_closed_frames = self._left_closed_frames + 1 if left_close else 0
+        self._right_closed_frames = self._right_closed_frames + 1 if right_close else 0
+        self._left_open_frames = self._left_open_frames + 1 if left_open else 0
+        self._right_open_frames = self._right_open_frames + 1 if right_open else 0
 
         if (
-            self._left_closed_frames >= self._config.min_consecutive_frames
-            and self._right_closed_frames == 0
+            left_close
+            and self._left_closed_frames >= self._config.min_closed_frames_for_hold
+            and not self._left_is_held
         ):
+            self._left_is_held = True
+            events.append(BlinkAction.LEFT_DOWN)
+
+        if (
+            right_close
+            and self._right_closed_frames >= self._config.min_closed_frames_for_hold
+            and not self._right_is_held
+        ):
+            self._right_is_held = True
+            events.append(BlinkAction.RIGHT_DOWN)
+
+        if (
+            self._left_is_held
+            and self._left_open_frames >= self._config.min_open_frames_for_release
+        ):
+            self._left_is_held = False
             self._left_closed_frames = 0
-            self._cooldown = self._config.cooldown_frames
-            return BlinkAction.LEFT_CLICK
+            events.append(BlinkAction.LEFT_UP)
 
         if (
-            self._right_closed_frames >= self._config.min_consecutive_frames
-            and self._left_closed_frames == 0
+            self._right_is_held
+            and self._right_open_frames >= self._config.min_open_frames_for_release
         ):
+            self._right_is_held = False
             self._right_closed_frames = 0
-            self._cooldown = self._config.cooldown_frames
-            return BlinkAction.RIGHT_CLICK
+            events.append(BlinkAction.RIGHT_UP)
 
-        return None
+        return events

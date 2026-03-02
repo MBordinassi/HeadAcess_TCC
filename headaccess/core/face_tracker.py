@@ -8,6 +8,8 @@ Supports:
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -98,7 +100,7 @@ class FaceTracker:
 
     def _ensure_task_model(self) -> Path:
         """Ensure FaceLandmarker model exists locally, downloading if needed."""
-        model_dir = Path(__file__).resolve().parents[1] / "models"
+        model_dir = self._resolve_model_dir()
         model_dir.mkdir(parents=True, exist_ok=True)
         model_path = model_dir / "face_landmarker.task"
         if model_path.exists():
@@ -114,6 +116,21 @@ class FaceTracker:
                 f"to {model_path}"
             ) from exc
         return model_path
+
+    def _resolve_model_dir(self) -> Path:
+        """Resolve model directory for source and frozen (PyInstaller) runs."""
+        if getattr(sys, "frozen", False):
+            bundled_base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+            bundled_model_dir = bundled_base / "models"
+            if bundled_model_dir.exists():
+                return bundled_model_dir
+
+            local_app_data = os.getenv("LOCALAPPDATA")
+            if local_app_data:
+                return Path(local_app_data) / "HeadAccess" / "models"
+            return Path.home() / ".headaccess" / "models"
+
+        return Path(__file__).resolve().parents[1] / "models"
 
     def process(self, frame_bgr: np.ndarray) -> Optional[FaceData]:
         """Process one frame and return face data if detected."""

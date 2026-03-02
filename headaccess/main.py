@@ -65,11 +65,16 @@ def run() -> None:
                 if target_cursor is not None:
                     mouse.move_to(*target_cursor)
 
-                blink_action = blink_detector.update(face_data.eye_data)
-                if blink_action == BlinkAction.LEFT_CLICK:
-                    mouse.left_click()
-                elif blink_action == BlinkAction.RIGHT_CLICK:
-                    mouse.right_click()
+                blink_actions = blink_detector.update(face_data.eye_data)
+                for action in blink_actions:
+                    if action == BlinkAction.LEFT_DOWN:
+                        mouse.left_down()
+                    elif action == BlinkAction.LEFT_UP:
+                        mouse.left_up()
+                    elif action == BlinkAction.RIGHT_DOWN:
+                        mouse.right_down()
+                    elif action == BlinkAction.RIGHT_UP:
+                        mouse.right_up()
 
                 if APP.debug_mode:
                     frame = DebugOverlay.draw(
@@ -83,6 +88,7 @@ def run() -> None:
                         landmarks=face_data.landmarks_px,
                     )
             else:
+                mouse.release_all()
                 if APP.debug_mode:
                     frame = DebugOverlay.draw(
                         frame=frame,
@@ -114,6 +120,7 @@ def run() -> None:
                 break
 
     finally:
+        mouse.release_all()
         camera.stop()
         tracker.close()
         cv2.destroyAllWindows()

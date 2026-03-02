@@ -15,6 +15,8 @@ class MouseController:
         self._logger = logging.getLogger(self.__class__.__name__)
         pyautogui.FAILSAFE = False
         self._screen_width, self._screen_height = pyautogui.size()
+        self._left_is_down = False
+        self._right_is_down = False
 
     @property
     def screen_size(self) -> Tuple[int, int]:
@@ -36,3 +38,40 @@ class MouseController:
         """Execute right click."""
         pyautogui.click(button="right")
         self._logger.info("mouse_click button=right")
+
+    def left_down(self) -> None:
+        """Press and hold left mouse button."""
+        if self._left_is_down:
+            return
+        pyautogui.mouseDown(button="left")
+        self._left_is_down = True
+        self._logger.info("mouse_down button=left")
+
+    def left_up(self) -> None:
+        """Release left mouse button."""
+        if not self._left_is_down:
+            return
+        pyautogui.mouseUp(button="left")
+        self._left_is_down = False
+        self._logger.info("mouse_up button=left")
+
+    def right_down(self) -> None:
+        """Press and hold right mouse button."""
+        if self._right_is_down:
+            return
+        pyautogui.mouseDown(button="right")
+        self._right_is_down = True
+        self._logger.info("mouse_down button=right")
+
+    def right_up(self) -> None:
+        """Release right mouse button."""
+        if not self._right_is_down:
+            return
+        pyautogui.mouseUp(button="right")
+        self._right_is_down = False
+        self._logger.info("mouse_up button=right")
+
+    def release_all(self) -> None:
+        """Release any pressed mouse buttons to avoid stuck drag state."""
+        self.left_up()
+        self.right_up()

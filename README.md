@@ -15,8 +15,10 @@ O projeto foi desenvolvido como prototipo de TCC, com arquitetura modular, foco 
 - Dead zone para reduzir tremores involuntarios
 - Calibracao inicial e recalibracao manual (`C`)
 - Deteccao de piscadas:
-  - piscada esquerda -> clique esquerdo
-  - piscada direita -> clique direito
+  - manter olho esquerdo fechado -> segura botao esquerdo (`mouseDown`)
+  - abrir o olho esquerdo -> solta botao esquerdo (`mouseUp`)
+  - manter olho direito fechado -> segura botao direito (`mouseDown`)
+  - abrir o olho direito -> solta botao direito (`mouseUp`)
 - Overlay de debug com:
   - landmarks faciais
   - centro do rosto
@@ -79,6 +81,30 @@ cd "headaccess"
 .\venv\Scripts\python.exe main.py
 ```
 
+## Gerar EXE (Windows)
+
+Para esta fase de V1, use `onedir` (rebuild mais rapido durante iteracao):
+
+```powershell
+cd "headaccess"
+.\build_exe.ps1
+```
+
+Saida:
+
+- `headaccess/dist/HeadAccess/HeadAccess.exe`
+
+Opcional, build unico arquivo (`onefile`, mais lento):
+
+```powershell
+cd "headaccess"
+.\build_exe.ps1 -OneFile
+```
+
+Saida:
+
+- `headaccess/dist/HeadAccess.exe`
+
 ## Controles
 
 - `C`: recalibrar posicao neutra da cabeca
@@ -91,8 +117,8 @@ cd "headaccess"
 3. O `MovementProcessor` converte deslocamento da cabeca em coordenadas de tela.
 4. Um filtro de media movel suaviza o movimento.
 5. A dead zone ignora micro-oscilacoes involuntarias.
-6. O `BlinkDetector` calcula EAR para detectar piscadas unilaterais.
-7. O `MouseController` move o cursor e dispara cliques.
+6. O `BlinkDetector` calcula EAR para detectar fechamento unilateral sustentado.
+7. O `MouseController` move o cursor e controla estados de segurar/soltar botoes.
 
 ## Configuracao
 
@@ -101,7 +127,7 @@ Ajustes centralizados em `headaccess/config.py`:
 - sensibilidade (`sensitivity_x`, `sensitivity_y`)
 - janela de suavizacao (`smoothing_window`)
 - dead zone (`dead_zone_px`)
-- limiar e cooldown de piscada (`ear_threshold`, `cooldown_frames`)
+- limiar e tempo minimo de fechamento (`ear_threshold`, `min_consecutive_frames`)
 - modo debug e nivel de log
 
 ## Troubleshooting
