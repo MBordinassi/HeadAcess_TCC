@@ -20,9 +20,12 @@ class FaceMeshConfig:
     """MediaPipe Face Mesh settings."""
 
     max_num_faces: int = 1
-    refine_landmarks: bool = True
+    refine_landmarks: bool = False
     min_detection_confidence: float = 0.6
     min_tracking_confidence: float = 0.6
+    processing_width: int = 320
+    processing_height: int = 240
+    include_all_landmarks: bool = False
 
 
 @dataclass(frozen=True)
@@ -39,10 +42,12 @@ class MovementConfig:
 class BlinkConfig:
     """Blink detection settings."""
 
-    ear_close_threshold: float = 0.26
-    ear_open_threshold: float = 0.30
-    min_closed_frames_for_hold: int = 2
-    min_open_frames_for_release: int = 3
+    ear_close_threshold: float = 0.30
+    ear_open_threshold: float = 0.32
+    min_closed_seconds_for_hold: float = 0.08
+    min_open_seconds_for_release: float = 0.08
+    click_cooldown_seconds: float = 0.20
+    unilateral_margin: float = 0.015
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,10 @@ class AppConfig:
     log_level: str = "INFO"
     target_fps: int = 30
     face_lost_grace_seconds: float = 0.35
+    auto_recalibration_enabled: bool = True
+    auto_recalibration_interval_seconds: float = 15.0
+    auto_recalibration_stable_seconds: float = 1.2
+    auto_recalibration_stable_radius_px: float = 8.0
 
 
 CAMERA = CameraConfig()

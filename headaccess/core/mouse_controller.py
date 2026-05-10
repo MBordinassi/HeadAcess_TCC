@@ -14,6 +14,7 @@ class MouseController:
     def __init__(self) -> None:
         self._logger = logging.getLogger(self.__class__.__name__)
         pyautogui.FAILSAFE = False
+        pyautogui.PAUSE = 0
         self._screen_width, self._screen_height = pyautogui.size()
         self._left_is_down = False
         self._right_is_down = False

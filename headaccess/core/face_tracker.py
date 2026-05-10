@@ -22,15 +22,17 @@ import numpy as np
 
 from config import FaceMeshConfig
 
+EyePoints = Tuple[Tuple[int, int], ...]
+
 
 @dataclass
 class FaceData:
     """Normalized and pixel-space face information from one frame."""
 
-    landmarks_px: List[Tuple[int, int]]
+    landmarks_px: Optional[List[Tuple[int, int]]]
     nose_px: Tuple[int, int]
     face_center_px: Tuple[int, int]
-    eye_data: Dict[str, Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]]]
+    eye_data: Dict[str, EyePoints]
 
 
 class FaceTracker:
@@ -40,17 +42,29 @@ class FaceTracker:
 
     LEFT_EYE = {
         "left_corner": 33,
+        "upper_outer": 160,
+        "upper_inner": 158,
         "right_corner": 133,
-        "top": 159,
-        "bottom": 145,
+        "lower_inner": 153,
+        "lower_outer": 144,
     }
 
     RIGHT_EYE = {
         "left_corner": 362,
+        "upper_inner": 385,
+        "upper_outer": 387,
         "right_corner": 263,
-        "top": 386,
-        "bottom": 374,
+        "lower_outer": 373,
+        "lower_inner": 380,
     }
+
+    KEY_INDICES = frozenset(
+        [
+            NOSE_INDEX,
+            *LEFT_EYE.values(),
+            *RIGHT_EYE.values(),
+        ]
+    )
 
     TASK_MODEL_URL = (
         "https://storage.googleapis.com/mediapipe-models/"
@@ -63,6 +77,8 @@ class FaceTracker:
         self._face_mesh = None
         self._task_landmarker = None
         self._video_timestamp_ms = 0
+        self._processing_size = (config.processing_width, config.processing_height)
+        self._include_all_landmarks = config.include_all_landmarks
 
         if self._use_tasks_api:
             self._init_tasks_api(config)
@@ -141,28 +157,39 @@ class FaceTracker:
         if landmarks is None:
             return None
 
-        landmarks_px = [
-            (int(landmark.x * frame_w), int(landmark.y * frame_h))
-            for landmark in landmarks
-        ]
+        key_points_px = {
+            index: (int(landmarks[index].x * frame_w), int(landmarks[index].y * frame_h))
+            for index in self.KEY_INDICES
+        }
+        landmarks_px = None
+        if self._include_all_landmarks:
+            landmarks_px = [
+                (int(landmark.x * frame_w), int(landmark.y * frame_h))
+                for landmark in landmarks
+            ]
 
-        nose_px = landmarks_px[self.NOSE_INDEX]
-        xs = [p[0] for p in landmarks_px]
-        ys = [p[1] for p in landmarks_px]
-        face_center_px = (int(sum(xs) / len(xs)), int(sum(ys) / len(ys)))
+        nose_px = key_points_px[self.NOSE_INDEX]
+        face_center_px = (
+            int(sum(landmark.x for landmark in landmarks) / len(landmarks) * frame_w),
+            int(sum(landmark.y for landmark in landmarks) / len(landmarks) * frame_h),
+        )
 
         eye_data = {
             "left": (
-                landmarks_px[self.LEFT_EYE["left_corner"]],
-                landmarks_px[self.LEFT_EYE["right_corner"]],
-                landmarks_px[self.LEFT_EYE["top"]],
-                landmarks_px[self.LEFT_EYE["bottom"]],
+                key_points_px[self.LEFT_EYE["left_corner"]],
+                key_points_px[self.LEFT_EYE["upper_outer"]],
+                key_points_px[self.LEFT_EYE["upper_inner"]],
+                key_points_px[self.LEFT_EYE["right_corner"]],
+                key_points_px[self.LEFT_EYE["lower_inner"]],
+                key_points_px[self.LEFT_EYE["lower_outer"]],
             ),
             "right": (
-                landmarks_px[self.RIGHT_EYE["left_corner"]],
-                landmarks_px[self.RIGHT_EYE["right_corner"]],
-                landmarks_px[self.RIGHT_EYE["top"]],
-                landmarks_px[self.RIGHT_EYE["bottom"]],
+                key_points_px[self.RIGHT_EYE["left_corner"]],
+                key_points_px[self.RIGHT_EYE["upper_inner"]],
+                key_points_px[self.RIGHT_EYE["upper_outer"]],
+                key_points_px[self.RIGHT_EYE["right_corner"]],
+                key_points_px[self.RIGHT_EYE["lower_outer"]],
+                key_points_px[self.RIGHT_EYE["lower_inner"]],
             ),
         }
 
@@ -175,6 +202,13 @@ class FaceTracker:
 
     def _extract_landmarks(self, frame_bgr: np.ndarray):
         """Extract normalized landmarks from whichever backend is active."""
+        processing_w, processing_h = self._processing_size
+        if processing_w > 0 and processing_h > 0:
+            frame_bgr = cv2.resize(
+                frame_bgr,
+                (processing_w, processing_h),
+                interpolation=cv2.INTER_AREA,
+            )
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         if not self._use_tasks_api:
             assert self._face_mesh is not None

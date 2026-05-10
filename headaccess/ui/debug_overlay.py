@@ -7,9 +7,41 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
+EyePoints = Tuple[Tuple[int, int], ...]
+
 
 class DebugOverlay:
     """Draws visual telemetry over camera frames."""
+
+    @staticmethod
+    def _draw_eye(
+        output: np.ndarray,
+        points: EyePoints,
+        label: str,
+        is_closed: bool,
+        is_held: bool,
+    ) -> None:
+        color = (0, 0, 255) if is_closed else (0, 220, 0)
+        if is_held:
+            color = (0, 165, 255)
+
+        contour = np.array(points, dtype=np.int32)
+        cv2.polylines(output, [contour], isClosed=True, color=color, thickness=2)
+        for point in points:
+            cv2.circle(output, point, 3, color, -1)
+
+        left = min(point[0] for point in points)
+        top = min(point[1] for point in points)
+        status = "HELD" if is_held else ("CLOSED" if is_closed else "OPEN")
+        cv2.putText(
+            output,
+            f"{label}: {status}",
+            (left, max(15, top - 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            color,
+            1,
+        )
 
     @staticmethod
     def draw(
@@ -22,6 +54,8 @@ class DebugOverlay:
         neutral_point: Optional[Tuple[float, float]],
         landmarks: Optional[list[Tuple[int, int]]] = None,
         blink_status: Optional[str] = None,
+        eye_data: Optional[dict[str, EyePoints]] = None,
+        blink_state: Optional[dict[str, float | bool]] = None,
     ) -> np.ndarray:
         """Render landmarks, vectors and status text."""
         output = frame.copy()
@@ -58,6 +92,25 @@ class DebugOverlay:
             neutral_int = (int(neutral_point[0]), int(neutral_point[1]))
             cv2.circle(output, neutral_int, 6, (255, 255, 0), 2)
             cv2.arrowedLine(output, neutral_int, nose_point, (0, 0, 255), 2)
+
+        if eye_data is not None:
+            blink_state = blink_state or {}
+            if "left" in eye_data:
+                DebugOverlay._draw_eye(
+                    output,
+                    eye_data["left"],
+                    "L",
+                    bool(blink_state.get("left_close")),
+                    bool(blink_state.get("left_held")),
+                )
+            if "right" in eye_data:
+                DebugOverlay._draw_eye(
+                    output,
+                    eye_data["right"],
+                    "R",
+                    bool(blink_state.get("right_close")),
+                    bool(blink_state.get("right_held")),
+                )
 
         cv2.putText(
             output,

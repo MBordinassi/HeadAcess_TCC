@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 import logging
 import time
 
@@ -14,6 +15,22 @@ from core.face_tracker import FaceTracker
 from core.mouse_controller import MouseController
 from core.movement_processor import MovementProcessor
 from ui.debug_overlay import DebugOverlay
+
+
+def is_nose_stable(
+    samples: deque[tuple[float, tuple[float, float]]],
+    stable_seconds: float,
+    radius_px: float,
+) -> bool:
+    """Return whether recent nose samples stayed inside a small area."""
+    if len(samples) < 2:
+        return False
+    if samples[-1][0] - samples[0][0] < stable_seconds:
+        return False
+
+    xs = [point[0] for _, point in samples]
+    ys = [point[1] for _, point in samples]
+    return (max(xs) - min(xs) <= radius_px) and (max(ys) - min(ys) <= radius_px)
 
 
 def setup_logging() -> None:
@@ -37,6 +54,8 @@ def run() -> None:
 
     last_time = time.time()
     last_face_seen_time = time.monotonic()
+    last_auto_calibration_time = time.monotonic()
+    nose_samples: deque[tuple[float, tuple[float, float]]] = deque()
     released_after_face_loss = False
     blink_status_text = "Blink: waiting_face"
 
@@ -56,15 +75,39 @@ def run() -> None:
             last_time = time.time()
 
             if face_data is not None:
-                last_face_seen_time = time.monotonic()
+                now = time.monotonic()
+                last_face_seen_time = now
                 released_after_face_loss = False
                 frame_h, frame_w = frame.shape[:2]
                 nose_point = (float(face_data.nose_px[0]), float(face_data.nose_px[1]))
+                nose_samples.append((now, nose_point))
+                while (
+                    nose_samples
+                    and now - nose_samples[0][0]
+                    > APP.auto_recalibration_stable_seconds
+                ):
+                    nose_samples.popleft()
 
                 # Auto-calibration happens once on first valid face frame.
                 if not movement.is_calibrated:
                     movement.calibrate(nose_point)
+                    last_auto_calibration_time = now
+                    nose_samples.clear()
                     logger.info("calibration_auto_initial x=%s y=%s", *nose_point)
+                elif (
+                    APP.auto_recalibration_enabled
+                    and now - last_auto_calibration_time
+                    >= APP.auto_recalibration_interval_seconds
+                    and is_nose_stable(
+                        nose_samples,
+                        APP.auto_recalibration_stable_seconds,
+                        APP.auto_recalibration_stable_radius_px,
+                    )
+                ):
+                    movement.calibrate(nose_point)
+                    last_auto_calibration_time = now
+                    nose_samples.clear()
+                    logger.info("calibration_auto_periodic x=%s y=%s", *nose_point)
 
                 target_cursor = movement.process(nose_point, (frame_w, frame_h))
                 if target_cursor is not None:
@@ -75,6 +118,10 @@ def run() -> None:
                 blink_status_text = (
                     f"EAR L:{blink_state.get('left_ear', 0.0):.3f}"
                     f" R:{blink_state.get('right_ear', 0.0):.3f}"
+                    f" | Shut L:{'Y' if blink_state.get('left_close') else 'N'}"
+                    f" R:{'Y' if blink_state.get('right_close') else 'N'}"
+                    f" | Close L:{blink_state.get('left_closed_duration', 0.0):.2f}s"
+                    f" R:{blink_state.get('right_closed_duration', 0.0):.2f}s"
                     f" | Hold L:{'Y' if blink_state.get('left_held') else 'N'}"
                     f" R:{'Y' if blink_state.get('right_held') else 'N'}"
                 )
@@ -99,8 +146,11 @@ def run() -> None:
                         neutral_point=movement.get_neutral(),
                         landmarks=face_data.landmarks_px,
                         blink_status=blink_status_text,
+                        eye_data=face_data.eye_data,
+                        blink_state=blink_state,
                     )
             else:
+                nose_samples.clear()
                 face_lost_elapsed = time.monotonic() - last_face_seen_time
                 if (
                     face_lost_elapsed >= APP.face_lost_grace_seconds
@@ -130,6 +180,8 @@ def run() -> None:
                     movement.calibrate(
                         (float(face_data.nose_px[0]), float(face_data.nose_px[1]))
                     )
+                    last_auto_calibration_time = time.monotonic()
+                    nose_samples.clear()
                     logger.info(
                         "calibration_manual x=%s y=%s",
                         face_data.nose_px[0],
