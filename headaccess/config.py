@@ -44,6 +44,9 @@ class BlinkConfig:
 
     ear_close_threshold: float = 0.30
     ear_open_threshold: float = 0.32
+    open_eye_calibration_seconds: float = 1.6
+    close_ratio: float = 0.78
+    open_ratio: float = 0.90
     min_closed_seconds_for_hold: float = 0.08
     min_open_seconds_for_release: float = 0.08
     click_cooldown_seconds: float = 0.20

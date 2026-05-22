@@ -25,6 +25,9 @@ class BlinkDetector:
 
     def __init__(self, config: BlinkConfig) -> None:
         self._config = config
+        self._calibration_started_at: float | None = None
+        self._left_calibration_samples: list[float] = []
+        self._right_calibration_samples: list[float] = []
         self._left_closed_since: float | None = None
         self._right_closed_since: float | None = None
         self._left_open_since: float | None = None
@@ -41,6 +44,29 @@ class BlinkDetector:
         # Smoothing/adaptation constants tuned for webcam noise.
         self._ear_smoothing_alpha = 0.35
         self._baseline_alpha = 0.03
+
+    @staticmethod
+    def _open_eye_average(samples: list[float]) -> float | None:
+        """Average the upper half of samples to ignore accidental blinks."""
+        if not samples:
+            return None
+        sorted_samples = sorted(samples)
+        upper_half = sorted_samples[len(sorted_samples) // 2 :]
+        return sum(upper_half) / len(upper_half)
+
+    def reset_calibration(self) -> None:
+        """Restart open-eye calibration and release any held state."""
+        self._calibration_started_at = None
+        self._left_calibration_samples.clear()
+        self._right_calibration_samples.clear()
+        self._left_open_baseline = None
+        self._right_open_baseline = None
+        self._left_closed_since = None
+        self._right_closed_since = None
+        self._left_open_since = None
+        self._right_open_since = None
+        self._left_is_held = False
+        self._right_is_held = False
 
     @staticmethod
     def _distance(p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
@@ -89,36 +115,68 @@ class BlinkDetector:
         left_ear = self._left_ear_smooth
         right_ear = self._right_ear_smooth
 
-        if left_ear >= self._config.ear_open_threshold:
+        if self._left_open_baseline is None or self._right_open_baseline is None:
+            if self._calibration_started_at is None:
+                self._calibration_started_at = now
+
+            self._left_calibration_samples.append(left_ear)
+            self._right_calibration_samples.append(right_ear)
+            calibration_elapsed = now - self._calibration_started_at
+            calibration_progress = min(
+                calibration_elapsed / self._config.open_eye_calibration_seconds,
+                1.0,
+            )
+
+            if calibration_elapsed >= self._config.open_eye_calibration_seconds:
+                self._left_open_baseline = self._open_eye_average(
+                    self._left_calibration_samples
+                )
+                self._right_open_baseline = self._open_eye_average(
+                    self._right_calibration_samples
+                )
+
+            self._debug_state = {
+                "left_ear": left_ear,
+                "right_ear": right_ear,
+                "left_close_threshold": 0.0,
+                "right_close_threshold": 0.0,
+                "left_open_threshold": 0.0,
+                "right_open_threshold": 0.0,
+                "left_open_baseline": self._left_open_baseline or 0.0,
+                "right_open_baseline": self._right_open_baseline or 0.0,
+                "left_held": False,
+                "right_held": False,
+                "left_close": False,
+                "right_close": False,
+                "both_closed": False,
+                "left_closed_duration": 0.0,
+                "right_closed_duration": 0.0,
+                "eye_calibrating": self._left_open_baseline is None
+                or self._right_open_baseline is None,
+                "eye_calibration_progress": calibration_progress,
+            }
+            return events
+
+        if left_ear >= self._left_open_baseline * self._config.open_ratio:
             self._left_open_baseline = self._ema(
                 self._left_open_baseline, left_ear, self._baseline_alpha
             )
-        elif self._left_open_baseline is None:
-            self._left_open_baseline = left_ear
 
-        if right_ear >= self._config.ear_open_threshold:
+        if right_ear >= self._right_open_baseline * self._config.open_ratio:
             self._right_open_baseline = self._ema(
                 self._right_open_baseline, right_ear, self._baseline_alpha
             )
-        elif self._right_open_baseline is None:
-            self._right_open_baseline = right_ear
 
-        left_close_threshold = max(
+        left_close_threshold = min(
             self._config.ear_close_threshold,
-            (self._left_open_baseline or self._config.ear_open_threshold) * 0.90,
+            self._left_open_baseline * self._config.close_ratio,
         )
-        right_close_threshold = max(
+        right_close_threshold = min(
             self._config.ear_close_threshold,
-            (self._right_open_baseline or self._config.ear_open_threshold) * 0.90,
+            self._right_open_baseline * self._config.close_ratio,
         )
-        left_open_threshold = max(
-            self._config.ear_open_threshold,
-            left_close_threshold + 0.03,
-        )
-        right_open_threshold = max(
-            self._config.ear_open_threshold,
-            right_close_threshold + 0.03,
-        )
+        left_open_threshold = self._left_open_baseline * self._config.open_ratio
+        right_open_threshold = self._right_open_baseline * self._config.open_ratio
 
         # Hysteresis avoids rapid toggling near threshold:
         # close when EAR is low, release only when EAR is clearly open.
@@ -225,6 +283,8 @@ class BlinkDetector:
             "right_close_threshold": right_close_threshold,
             "left_open_threshold": left_open_threshold,
             "right_open_threshold": right_open_threshold,
+            "left_open_baseline": self._left_open_baseline,
+            "right_open_baseline": self._right_open_baseline,
             "left_held": self._left_is_held,
             "right_held": self._right_is_held,
             "left_close": left_close,
@@ -232,6 +292,8 @@ class BlinkDetector:
             "both_closed": both_closed,
             "left_closed_duration": left_closed_duration,
             "right_closed_duration": right_closed_duration,
+            "eye_calibrating": False,
+            "eye_calibration_progress": 1.0,
         }
 
         return events

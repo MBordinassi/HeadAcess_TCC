@@ -115,16 +115,24 @@ def run() -> None:
 
                 blink_actions = blink_detector.update(face_data.eye_data)
                 blink_state = blink_detector.get_debug_state()
-                blink_status_text = (
-                    f"EAR L:{blink_state.get('left_ear', 0.0):.3f}"
-                    f" R:{blink_state.get('right_ear', 0.0):.3f}"
-                    f" | Shut L:{'Y' if blink_state.get('left_close') else 'N'}"
-                    f" R:{'Y' if blink_state.get('right_close') else 'N'}"
-                    f" | Close L:{blink_state.get('left_closed_duration', 0.0):.2f}s"
-                    f" R:{blink_state.get('right_closed_duration', 0.0):.2f}s"
-                    f" | Hold L:{'Y' if blink_state.get('left_held') else 'N'}"
-                    f" R:{'Y' if blink_state.get('right_held') else 'N'}"
-                )
+                if blink_state.get("eye_calibrating"):
+                    blink_status_text = (
+                        "Eye calibration: keep eyes open "
+                        f"{blink_state.get('eye_calibration_progress', 0.0) * 100:.0f}%"
+                        f" | EAR L:{blink_state.get('left_ear', 0.0):.3f}"
+                        f" R:{blink_state.get('right_ear', 0.0):.3f}"
+                    )
+                else:
+                    blink_status_text = (
+                        f"EAR L:{blink_state.get('left_ear', 0.0):.3f}"
+                        f" R:{blink_state.get('right_ear', 0.0):.3f}"
+                        f" | Base L:{blink_state.get('left_open_baseline', 0.0):.3f}"
+                        f" R:{blink_state.get('right_open_baseline', 0.0):.3f}"
+                        f" | Shut L:{'Y' if blink_state.get('left_close') else 'N'}"
+                        f" R:{'Y' if blink_state.get('right_close') else 'N'}"
+                        f" | Hold L:{'Y' if blink_state.get('left_held') else 'N'}"
+                        f" R:{'Y' if blink_state.get('right_held') else 'N'}"
+                    )
                 for action in blink_actions:
                     if action == BlinkAction.LEFT_DOWN:
                         mouse.left_down()
@@ -180,6 +188,8 @@ def run() -> None:
                     movement.calibrate(
                         (float(face_data.nose_px[0]), float(face_data.nose_px[1]))
                     )
+                    mouse.release_all()
+                    blink_detector.reset_calibration()
                     last_auto_calibration_time = time.monotonic()
                     nose_samples.clear()
                     logger.info(
